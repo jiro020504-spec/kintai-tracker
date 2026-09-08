@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>勤怠管理 kintai-tracker</title>
+<style>
+  :root {
+    --main: #6F7563;
+    --main-dark: #5a5f4f;
+    --accent: #F4F0E6;
+    --text: #2F3430;
+    --border: #d8d3c4;
+    --muted: #7a7a70;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", "Meiryo", sans-serif;
+    background: #ffffff;
+    color: var(--text);
+    line-height: 1.6;
+    padding: 20px;
+  }
+  .container {
+    max-width: 820px;
+    margin: 0 auto;
+  }
+  h1 {
+    font-size: 1.3rem;
+    font-weight: 700;
+    margin: 0 0 4px;
+    color: var(--text);
+  }
+  h2 {
+    font-size: 1.02rem;
+    font-weight: 700;
+    margin: 0 0 12px;
+    color: var(--text);
+  }
+  h3 {
+    font-size: 0.92rem;
+    font-weight: 700;
+    margin: 0 0 8px;
+    color: var(--text);
+  }
+  .subtitle {
+    font-size: 0.82rem;
+    color: var(--muted);
+    margin: 0 0 18px;
+  }
+  hr.rule {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 22px 0;
+  }
+  .emph { font-weight: 700; }
+
+  /* ---- Tabs ---- */
+  .tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .tab-btn {
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 8px 4px;
+    margin-right: 18px;
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: var(--muted);
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .tab-btn.active {
+    color: var(--text);
+    border-bottom-color: var(--main);
+    font-weight: 700;
+  }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* ---- Passcode overlay ---- */
+  .passcode-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(47, 52, 48, 0.55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 20px;
+  }
+  .passcode-box {
+    background: #fff;
+    border: 1px solid var(--border);
+    padding: 24px;
+    max-width: 320px;
+    width: 100%;
+  }
+  .passcode-box h2 { margin: 0 0 8px; }
+  .passcode-box p { font-size: 0.85rem; color: var(--muted); margin: 0 0 14px; }
+  .passcode-box input { width: 100%; padding: 10px 12px; margin-bottom: 10px; }
+  .passcode-box .error-msg { color: var(--text); font-weight: 700; font-size: 0.82rem; margin: -4px 0 10px; display: none; }
+  .passcode-box button { width: 100%; padding: 10px; }
+  .error-state { font-weight: 700; padding: 20px 0; }
+
+  /* ---- Form ---- */
+  .field-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+  .field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .field label { font-size: 0.78rem; color: var(--muted); }
+  .field-full { grid-column: 1 / -1; }
+  input, select, textarea {
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    font-size: 0.9rem;
+    background: #fff;
+    color: var(--text);
+    font-family: inherit;
+    width: 100%;
+    min-width: 0;
+  }
+  textarea { resize: vertical; min-height: 50px; }
+  input:focus, select:focus, textarea:focus {
+    outline: 2px solid var(--main);
+    outline-offset: 1px;
+  }
+  label.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.88rem;
+    cursor: pointer;
+  }
+  label.checkbox-label input { width: 16px; height: 16px; accent-color: var(--main); }
+
+  .tag-input-row { display: flex; gap: 6px; margin-bottom: 8px; }
+  .tag-input-row input { flex: 1; }
+  .tag-quick { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  .tag-quick button {
+    padding: 3px 10px;
+    font-size: 0.76rem;
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .tag-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tag-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 9px;
+    font-size: 0.76rem;
+    border: 1px solid var(--main);
+    color: var(--text);
+  }
+  .tag-chip button {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 0.85rem;
+    padding: 0;
+    line-height: 1;
+    font-family: inherit;
+  }
+
+  button { font-family: inherit; cursor: pointer; }
+  .btn-primary {
+    background: var(--main);
+    color: #fff;
+    border: 1px solid var(--main);
+    padding: 8px 18px;
+    font-size: 0.9rem;
+    font-weight: 600;
+  }
+  .btn-primary:hover:not(:disabled) { background: var(--main-dark); }
+  .btn-primary:disabled { background: #cfcabb; border-color: #cfcabb; color: #8a8a80; cursor: not-allowed; }
+  .btn-secondary {
+    background: none;
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 8px 18px;
+    font-size: 0.9rem;
+  }
+  .btn-secondary:hover { border-color: var(--main); }
+  .btn-text {
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-size: 0.78rem;
+    padding: 3px 6px;
+    text-decoration: underline;
+  }
+  .btn-text:hover { color: var(--text); }
+  .form-actions { display: flex; gap: 8px; margin-top: 4px; }
+
+  /* ---- Tables (ledger style) ---- */
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    background: var(--main);
+    color: #fff;
+    text-align: left;
+    font-weight: 600;
+    font-size: 0.78rem;
+    padding: 8px 10px;
+  }
+  td {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.86rem;
+    vertical-align: top;
+  }
+  tbody tr:last-child td { border-bottom: 1px solid var(--border); }
+  td.row-head { font-weight: 700; white-space: nowrap; }
+  tr.accent-row td { background: var(--accent); }
+  td.muted { color: var(--muted); }
+  .table-wrap { overflow-x: auto; }
+  .empty-state { text-align: center; padding: 30px; color: var(--muted); font-size: 0.88rem; }
+  .memo-cell { max-width: 180px; word-break: break-word; }
+  .tags-cell { font-size: 0.78rem; color: var(--muted); }
+
+  /* ---- Nav (week/month) ---- */
+  .period-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .period-nav .period-label { font-size: 1rem; font-weight: 700; }
+  .period-nav-buttons { display: flex; gap: 6px; align-items: center; }
+  .nav-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text);
+    width: 30px;
+    height: 30px;
+    font-size: 0.9rem;
+  }
+  .nav-btn:hover { border-color: var(--main); }
+  .today-btn {
+    background: none;
+    border: 1px solid var(--main);
+    color: var(--text);
+    padding: 0 10px;
+    font-size: 0.78rem;
+    height: 30px;
+  }
+
+  /* ---- Stat rows (monthly summary) ---- */
+  .stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.92rem;
+  }
+  .stat-row:first-of-type { border-top: 1px solid var(--border); }
+  .stat-row .stat-label { color: var(--muted); font-size: 0.82rem; }
+  .stat-row .stat-value { font-weight: 700; font-size: 1.05rem; }
+  .stat-note { font-size: 0.76rem; color: var(--muted); margin-top: -6px; margin-bottom: 4px; }
+
+  @media (max-width: 480px) {
+    .field-grid { grid-template-columns: 1fr 1fr; }
+    th, td { padding: 6px 6px; font-size: 0.78rem; }
+    .memo-cell { max-width: 100px; }
+  }
+  @media (max-width: 380px) {
+    .field-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="passcode-overlay" id="passcode-overlay" style="display:none;">
+  <div class="passcode-box">
+    <h2>パスコードを入力</h2>
+    <p>共通パスコードを入力してください。</p>
+    <form id="passcode-form">
+      <input type="password" id="passcode-input" placeholder="パスコード" autocomplete="off" required>
+      <div class="error-msg" id="passcode-error">パスコードが違います。</div>
+      <button type="submit" class="btn-primary" id="passcode-submit">開く</button>
+    </form>
+  </div>
+</div>
+
+<div class="container">
+  <h1>勤怠管理</h1>
+  <p class="subtitle">週3勤務(月・水・金基準) / 1日実働8h / 月給固定</p>
+
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="entry">日次入力</button>
+    <button class="tab-btn" data-tab="week">週間ビュー</button>
+    <button class="tab-btn" data-tab="month">月間サマリー</button>
+  </div>
+
+  <!-- ============ Tab: 日次入力 ============ -->
+  <div class="tab-panel active" id="tab-entry">
+    <h2 id="entry-form-title">記録を追加</h2>
+    <form id="entry-form">
+      <input type="hidden" id="record-id">
+      <div class="field-grid">
+        <div class="field">
+          <label for="work-date">日付</label>
+          <input type="date" id="work-date" required>
+        </div>
+        <div class="field">
+          <label for="category">区分</label>
+          <select id="category">
+            <option value="通常出勤">通常出勤</option>
+            <option value="代休">代休</option>
+            <option value="在宅対応">在宅対応</option>
+            <option value="休日出勤">休日出勤</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="start-time">開始時刻</label>
+          <input type="time" id="start-time" value="09:00">
+        </div>
+        <div class="field">
+          <label for="end-time">終了時刻</label>
+          <input type="time" id="end-time" value="18:00">
+        </div>
+        <div class="field">
+          <label>&nbsp;</label>
+          <label class="checkbox-label"><input type="checkbox" id="has-break" checked> 休憩(1h)あり</label>
+        </div>
+      </div>
+
+      <div class="field field-full" style="margin-bottom:14px;">
+        <label>タグ</label>
+        <div class="tag-quick" id="tag-quick"></div>
+        <div class="tag-input-row">
+          <input type="text" id="tag-text-input" placeholder="タグを入力してEnter">
+          <button type="button" class="btn-secondary" id="tag-add-btn">追加</button>
+        </div>
+        <div class="tag-chips" id="tag-chips"></div>
+      </div>
+
+      <div class="field field-full" style="margin-bottom:14px;">
+        <label for="memo">メモ</label>
+        <textarea id="memo" placeholder="自由記述"></textarea>
+      </div>
+
+      <div class="form-actions">
+        <button type="submit" class="btn-primary" id="submit-btn">追加</button>
+        <button type="button" class="btn-secondary" id="cancel-edit" style="display:none;">キャンセル</button>
+      </div>
+    </form>
+
+    <hr class="rule">
+
+    <h3>記録一覧</h3>
+    <div class="table-wrap" id="entry-list"></div>
+  </div>
+
+  <!-- ============ Tab: 週間ビュー ============ -->
+  <div class="tab-panel" id="tab-week">
+    <div class="period-nav">
+      <div class="period-nav-buttons">
+        <button class="nav-btn" id="prev-week" aria-label="前の週">&#9664;</button>
+        <button class="nav-btn" id="next-week" aria-label="次の週">&#9654;</button>
+        <button class="today-btn" id="week-today-btn">今週</button>
+      </div>
+      <div class="period-label" id="week-label"></div>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">出勤日数</span>
+      <span class="stat-value" id="week-attendance-count">-</span>
+    </div>
+    <div class="table-wrap" id="week-table" style="margin-top:14px;"></div>
+  </div>
+
+  <!-- ============ Tab: 月間サマリー ============ -->
+  <div class="tab-panel" id="tab-month">
+    <div class="period-nav">
+      <div class="period-nav-buttons">
+        <button class="nav-btn" id="prev-month" aria-label="前の月">&#9664;</button>
+        <button class="nav-btn" id="next-month" aria-label="次の月">&#9654;</button>
+        <button class="today-btn" id="month-today-btn">今月</button>
+      </div>
+      <div class="period-label" id="month-label"></div>
+    </div>
+
+    <div class="stat-row">
+      <span class="stat-label">総実働時間</span>
+      <span class="stat-value" id="month-actual-hours">-</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">基準時間</span>
+      <span class="stat-value" id="month-baseline-hours">-</span>
+    </div>
+    <div class="stat-note" id="month-baseline-note"></div>
+    <div class="stat-row">
+      <span class="stat-label">差分(超過 / 不足)</span>
+      <span class="stat-value" id="month-diff-hours">-</span>
+    </div>
+
+    <hr class="rule">
+    <h3>タグ別集計</h3>
+    <div class="table-wrap" id="month-tag-table"></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  const SUPABASE_URL = 'https://timytwkdfmchzojvzjzq.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_QrhqeSQYfQbljjGyWIjx2A_rq7wFU5-';
+  const PASSCODE_STORAGE_KEY = 'acraft-passcode';
+  const CATEGORIES = ['通常出勤', '代休', '在宅対応', '休日出勤'];
+  const QUICK_TAGS = ['のんちゃん対応', '達磨研修', '通常業務'];
+  const BASIC_WEEKDAYS = [1, 3, 5]; // Mon, Wed, Fri (Date#getDay(): Sun=0)
+  const WEEKDAY_JP = ['日', '月', '火', '水', '木', '金', '土'];
+  const BASE_DAYS_PER_WEEK = 3;
+  const BASE_HOURS_PER_DAY = 8;
+
+  let sb = null;
+
+  function getStoredPasscode() {
+    try { return localStorage.getItem(PASSCODE_STORAGE_KEY) || ''; }
+    catch (e) { return ''; }
+  }
+  function storePasscode(pc) {
+    try { localStorage.setItem(PASSCODE_STORAGE_KEY, pc); } catch (e) {}
+  }
+  function clearStoredPasscode() {
+    try { localStorage.removeItem(PASSCODE_STORAGE_KEY); } catch (e) {}
+  }
+  function createSupabaseClient(passcode) {
+    return window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+      global: { headers: { 'x-app-passcode': passcode } }
+    });
+  }
+  async function verifyPasscode(passcode) {
+    const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    const { data, error } = await client.rpc('check_passcode', { input_passcode: passcode });
+    if (error) return false;
+    return data === true;
+  }
+
+  function uid() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  }
+  function pad2(n) { return String(n).padStart(2, '0'); }
+  function formatYMD(date) {
+    return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+  }
+  function parseYMD(str) {
+    const [y, m, d] = str.split('-').map(Number);
+    return new Date(y, m - 1, d);
+  }
+  function addDays(date, n) {
+    const d = new Date(date);
+    d.setDate(d.getDate() + n);
+    return d;
+  }
+  function startOfWeek(date) {
+    const d = new Date(date);
+    const diff = (d.getDay() + 6) % 7;
+    d.setDate(d.getDate() - diff);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str == null ? '' : str;
+    return div.innerHTML;
+  }
+  function hhmm(t) {
+    return t ? t.slice(0, 5) : '';
+  }
+  function minutesToLabel(mins) {
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return m === 0 ? `${h}時間` : `${h}時間${m}分`;
+  }
+
+  function workedMinutes(rec) {
+    if (!rec.start_time || !rec.end_time) return 0;
+    const [sh, sm] = hhmm(rec.start_time).split(':').map(Number);
+    const [eh, em] = hhmm(rec.end_time).split(':').map(Number);
+    let mins = (eh * 60 + em) - (sh * 60 + sm);
+    if (rec.has_break) mins -= 60;
+    return Math.max(0, mins);
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  let records = [];
+  let editingId = null;
+  let formTags = [];
+  let weekAnchor = startOfWeek(today);
+  let monthAnchorYear = today.getFullYear();
+  let monthAnchorMonth = today.getMonth();
+
+  const passcodeOverlay = document.getElementById('passcode-overlay');
+  const passcodeForm = document.getElementById('passcode-form');
+  const passcodeInput = document.getElementById('passcode-input');
+  const passcodeError = document.getElementById('passcode-error');
+  const passcodeSubmitBtn = document.getElementById('passcode-submit');
+
+  const entryForm = document.getElementById('entry-form');
+  const entryFormTitle = document.getElementById('entry-form-title');
+  const submitBtn = document.getElementById('submit-btn');
+  const cancelEditBtn = document.getElementById('cancel-edit');
+  const entryListEl = document.getElementById('entry-list');
+  const categorySelect = document.getElementById('category');
+  const startTimeInput = document.getElementById('start-time');
+  const endTimeInput = document.getElementById('end-time');
+  const hasBreakInput = document.getElementById('has-break');
+
+  function updateTimeFieldsForCategory() {
+    const isRestDay = categorySelect.value === '代休';
+    startTimeInput.disabled = isRestDay;
+    endTimeInput.disabled = isRestDay;
+    hasBreakInput.disabled = isRestDay;
+  }
+  categorySelect.addEventListener('change', updateTimeFieldsForCategory);
+  const tagQuickEl = document.getElementById('tag-quick');
+  const tagChipsEl = document.getElementById('tag-chips');
+  const tagTextInput = document.getElementById('tag-text-input');
+
+  const weekLabelEl = document.getElementById('week-label');
+  const weekTableEl = document.getElementById('week-table');
+  const weekAttendanceEl = document.getElementById('week-attendance-count');
+
+  const monthLabelEl = document.getElementById('month-label');
+  const monthActualEl = document.getElementById('month-actual-hours');
+  const monthBaselineEl = document.getElementById('month-baseline-hours');
+  const monthBaselineNoteEl = document.getElementById('month-baseline-note');
+  const monthDiffEl = document.getElementById('month-diff-hours');
+  const monthTagTableEl = document.getElementById('month-tag-table');
+
+  // ---------------- Tabs ----------------
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    });
+  });
+
+  // ---------------- Tags UI ----------------
+  function renderTagQuick() {
+    tagQuickEl.innerHTML = QUICK_TAGS.map(t =>
+      `<button type="button" data-tag="${escapeHtml(t)}">+ ${escapeHtml(t)}</button>`
+    ).join('');
+  }
+  function renderTagChips() {
+    tagChipsEl.innerHTML = formTags.map((t, i) =>
+      `<span class="tag-chip">${escapeHtml(t)}<button type="button" data-idx="${i}">&times;</button></span>`
+    ).join('');
+  }
+  function addFormTag(tag) {
+    const t = tag.trim();
+    if (!t || formTags.includes(t)) return;
+    formTags.push(t);
+    renderTagChips();
+  }
+  renderTagQuick();
+  tagQuickEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-tag]');
+    if (!btn) return;
+    addFormTag(btn.dataset.tag);
+  });
+  tagChipsEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-idx]');
+    if (!btn) return;
+    formTags.splice(Number(btn.dataset.idx), 1);
+    renderTagChips();
+  });
+  document.getElementById('tag-add-btn').addEventListener('click', () => {
+    addFormTag(tagTextInput.value);
+    tagTextInput.value = '';
+    tagTextInput.focus();
+  });
+  tagTextInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addFormTag(tagTextInput.value);
+      tagTextInput.value = '';
+    }
+  });
+
+  // ---------------- Data layer ----------------
+  function normalizeRow(row) {
+    return {
+      id: row.id,
+      work_date: row.work_date,
+      category: row.category,
+      start_time: row.start_time,
+      end_time: row.end_time,
+      has_break: row.has_break,
+      memo: row.memo || '',
+      tags: Array.isArray(row.tags) ? row.tags : []
+    };
+  }
+
+  async function fetchRecords() {
+    const { data, error } = await sb.from('kintai_records').select('*').order('work_date', { ascending: false });
+    if (error) {
+      console.error(error);
+      entryListEl.innerHTML = '<div class="empty-state error-state">データの読み込みに失敗しました。通信状況を確認して再読み込みしてください。</div>';
+      return [];
+    }
+    return data.map(normalizeRow);
+  }
+
+  async function boot() {
+    entryListEl.innerHTML = '<div class="empty-state">読み込み中...</div>';
+    records = await fetchRecords();
+    renderAll();
+  }
+
+  // ---------------- Entry form ----------------
+  function resetEntryForm() {
+    entryForm.reset();
+    document.getElementById('record-id').value = '';
+    document.getElementById('work-date').value = formatYMD(today);
+    document.getElementById('start-time').value = '09:00';
+    document.getElementById('end-time').value = '18:00';
+    document.getElementById('has-break').checked = true;
+    formTags = [];
+    renderTagChips();
+    editingId = null;
+    entryFormTitle.textContent = '記録を追加';
+    submitBtn.textContent = '追加';
+    cancelEditBtn.style.display = 'none';
+    updateTimeFieldsForCategory();
+  }
+
+  function startEditRecord(rec) {
+    editingId = rec.id;
+    document.getElementById('record-id').value = rec.id;
+    document.getElementById('work-date').value = rec.work_date;
+    document.getElementById('category').value = rec.category;
+    document.getElementById('start-time').value = hhmm(rec.start_time);
+    document.getElementById('end-time').value = hhmm(rec.end_time);
+    document.getElementById('has-break').checked = !!rec.has_break;
+    document.getElementById('memo').value = rec.memo || '';
+    formTags = [...rec.tags];
+    renderTagChips();
+    entryFormTitle.textContent = '記録を編集';
+    submitBtn.textContent = '更新';
+    cancelEditBtn.style.display = 'inline-block';
+    updateTimeFieldsForCategory();
+    document.querySelector('.tab-btn[data-tab="entry"]').click();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  entryForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const workDate = document.getElementById('work-date').value;
+    const category = document.getElementById('category').value;
+    const startTime = document.getElementById('start-time').value;
+    const endTime = document.getElementById('end-time').value;
+    const hasBreak = document.getElementById('has-break').checked;
+    const memo = document.getElementById('memo').value.trim();
+
+    if (!workDate) return;
+    if (category !== '代休' && (!startTime || !endTime)) {
+      alert('開始時刻・終了時刻を入力してください(代休以外は必須です)。');
+      return;
+    }
+
+    const isRestDay = category === '代休';
+    const payload = {
+      work_date: workDate,
+      category,
+      start_time: isRestDay ? null : (startTime || null),
+      end_time: isRestDay ? null : (endTime || null),
+      has_break: isRestDay ? false : hasBreak,
+      memo,
+      tags: formTags
+    };
+
+    submitBtn.disabled = true;
+    try {
+      if (editingId) {
+        const { error } = await sb.from('kintai_records').update(payload).eq('id', editingId);
+        if (error) throw error;
+      } else {
+        const { error } = await sb.from('kintai_records').insert({ id: uid(), ...payload });
+        if (error) throw error;
+      }
+      resetEntryForm();
+      records = await fetchRecords();
+      renderAll();
+    } catch (err) {
+      alert('保存に失敗しました: ' + err.message);
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+
+  cancelEditBtn.addEventListener('click', resetEntryForm);
+
+  function renderEntryList() {
+    if (records.length === 0) {
+      entryListEl.innerHTML = '<div class="empty-state">記録がありません。上のフォームから追加してください。</div>';
+      return;
+    }
+    const rows = records.map(rec => {
+      const mins = workedMinutes(rec);
+      const timeLabel = rec.start_time && rec.end_time
+        ? `${hhmm(rec.start_time)}〜${hhmm(rec.end_time)}${rec.has_break ? '(休憩1h)' : ''}`
+        : '—';
+      const tagsLabel = rec.tags.length ? rec.tags.map(escapeHtml).join(', ') : '';
+      const isSwap = rec.category === '代休' || rec.category === '休日出勤';
+      return `
+        <tr class="${isSwap ? 'accent-row' : ''}">
+          <td class="row-head">${escapeHtml(rec.work_date)}</td>
+          <td>${escapeHtml(rec.category)}</td>
+          <td>${timeLabel}</td>
+          <td class="emph">${minutesToLabel(mins)}</td>
+          <td class="tags-cell">${tagsLabel}</td>
+          <td class="memo-cell muted">${escapeHtml(rec.memo)}</td>
+          <td style="white-space:nowrap;">
+            <button type="button" class="btn-text" data-action="edit" data-id="${rec.id}">編集</button>
+            <button type="button" class="btn-text" data-action="delete" data-id="${rec.id}">削除</button>
+          </td>
+        </tr>`;
+    }).join('');
+
+    entryListEl.innerHTML = `
+      <table>
+        <thead>
+          <tr>
+            <th>日付</th><th>区分</th><th>時刻</th><th>実働</th><th>タグ</th><th>メモ</th><th>操作</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  }
+
+  entryListEl.addEventListener('click', async (e) => {
+    const btn = e.target.closest('button[data-action]');
+    if (!btn) return;
+    const id = btn.dataset.id;
+    const action = btn.dataset.action;
+    if (action === 'delete') {
+      if (confirm('この記録を削除しますか?')) {
+        const { error } = await sb.from('kintai_records').delete().eq('id', id);
+        if (error) { alert('削除に失敗しました: ' + error.message); return; }
+        records = await fetchRecords();
+        renderAll();
+      }
+    } else if (action === 'edit') {
+      const rec = records.find(r => r.id === id);
+      if (rec) startEditRecord(rec);
+    }
+  });
+
+  // ---------------- Week view ----------------
+  function renderWeekView() {
+    const weekEnd = addDays(weekAnchor, 6);
+    weekLabelEl.textContent =
+      `${weekAnchor.getFullYear()}/${weekAnchor.getMonth() + 1}/${weekAnchor.getDate()}` +
+      `〜${weekEnd.getMonth() + 1}/${weekEnd.getDate()}`;
+
+    const weekStartStr = formatYMD(weekAnchor);
+    const weekEndStr = formatYMD(weekEnd);
+    const weekRecords = records.filter(r => r.work_date >= weekStartStr && r.work_date <= weekEndStr);
+
+    const attendanceDates = new Set(
+      weekRecords.filter(r => r.category !== '代休').map(r => r.work_date)
+    );
+    weekAttendanceEl.textContent = `${attendanceDates.size} / ${BASE_DAYS_PER_WEEK} 日`;
+
+    let rows = '';
+    for (let i = 0; i < 7; i++) {
+      const d = addDays(weekAnchor, i);
+      const dStr = formatYMD(d);
+      const isBasic = BASIC_WEEKDAYS.includes(d.getDay());
+      const dayRecords = weekRecords.filter(r => r.work_date === dStr);
+      const isToday = dStr === formatYMD(today);
+      const hasSwap = dayRecords.some(r => r.category === '代休' || r.category === '休日出勤');
+
+      const dateLabel = `${d.getMonth() + 1}/${d.getDate()}(${WEEKDAY_JP[d.getDay()]})${isBasic ? ' ・基本' : ''}`;
+
+      let bodyHtml;
+      if (dayRecords.length === 0) {
+        bodyHtml = isBasic
+          ? '<span class="muted">未入力(基本勤務日)</span>'
+          : '<span class="muted">—</span>';
+      } else {
+        bodyHtml = dayRecords.map(r => {
+          const mins = workedMinutes(r);
+          const timeLabel = r.start_time && r.end_time ? `${hhmm(r.start_time)}〜${hhmm(r.end_time)}` : '';
+          return `<div><span class="emph">${escapeHtml(r.category)}</span> ${timeLabel} ${mins > 0 ? `<span class="emph">${minutesToLabel(mins)}</span>` : ''}</div>`;
+        }).join('');
+      }
+
+      rows += `
+        <tr class="${hasSwap ? 'accent-row' : ''}">
+          <td class="row-head">${dateLabel}${isToday ? ' (本日)' : ''}</td>
+          <td>${bodyHtml}</td>
+        </tr>`;
+    }
+
+    weekTableEl.innerHTML = `
+      <table>
+        <thead><tr><th style="width:38%;">日付</th><th>内容</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  }
+
+  document.getElementById('prev-week').addEventListener('click', () => {
+    weekAnchor = addDays(weekAnchor, -7);
+    renderWeekView();
+  });
+  document.getElementById('next-week').addEventListener('click', () => {
+    weekAnchor = addDays(weekAnchor, 7);
+    renderWeekView();
+  });
+  document.getElementById('week-today-btn').addEventListener('click', () => {
+    weekAnchor = startOfWeek(today);
+    renderWeekView();
+  });
+
+  // ---------------- Month view ----------------
+  function countWeeksInMonth(year, month) {
+    const first = new Date(year, month, 1);
+    const last = new Date(year, month + 1, 0);
+    let cursor = startOfWeek(first);
+    let count = 0;
+    while (cursor <= last) {
+      count += 1;
+      cursor = addDays(cursor, 7);
+    }
+    return count;
+  }
+
+  function renderMonthView() {
+    monthLabelEl.textContent = `${monthAnchorYear}年${monthAnchorMonth + 1}月`;
+
+    const monthStartStr = `${monthAnchorYear}-${pad2(monthAnchorMonth + 1)}-01`;
+    const lastDay = new Date(monthAnchorYear, monthAnchorMonth + 1, 0).getDate();
+    const monthEndStr = `${monthAnchorYear}-${pad2(monthAnchorMonth + 1)}-${pad2(lastDay)}`;
+
+    const monthRecords = records.filter(r => r.work_date >= monthStartStr && r.work_date <= monthEndStr);
+    const totalMins = monthRecords.reduce((sum, r) => sum + workedMinutes(r), 0);
+
+    const weeks = countWeeksInMonth(monthAnchorYear, monthAnchorMonth);
+    const baselineMins = BASE_DAYS_PER_WEEK * BASE_HOURS_PER_DAY * 60 * weeks;
+    const diffMins = totalMins - baselineMins;
+
+    monthActualEl.textContent = minutesToLabel(totalMins);
+    monthBaselineEl.textContent = minutesToLabel(baselineMins);
+    monthBaselineNoteEl.textContent =
+      `内訳: ${BASE_DAYS_PER_WEEK}日 × ${BASE_HOURS_PER_DAY}h × ${weeks}週(この月の週数)`;
+    monthDiffEl.textContent = (diffMins >= 0 ? '+' : '−') + minutesToLabel(Math.abs(diffMins));
+
+    const tagTotals = {};
+    monthRecords.forEach(r => {
+      const mins = workedMinutes(r);
+      if (mins <= 0) return;
+      const tags = r.tags.length ? r.tags : ['(タグなし)'];
+      tags.forEach(t => {
+        tagTotals[t] = (tagTotals[t] || 0) + mins;
+      });
+    });
+    const tagRows = Object.entries(tagTotals).sort((a, b) => b[1] - a[1]);
+
+    if (tagRows.length === 0) {
+      monthTagTableEl.innerHTML = '<div class="empty-state">この月の記録がありません。</div>';
+    } else {
+      monthTagTableEl.innerHTML = `
+        <table>
+          <thead><tr><th>タグ</th><th>合計時間</th></tr></thead>
+          <tbody>
+            ${tagRows.map(([tag, mins]) => `
+              <tr>
+                <td class="row-head">${escapeHtml(tag)}</td>
+                <td class="emph">${minutesToLabel(mins)}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>`;
+    }
+  }
+
+  document.getElementById('prev-month').addEventListener('click', () => {
+    monthAnchorMonth -= 1;
+    if (monthAnchorMonth < 0) { monthAnchorMonth = 11; monthAnchorYear -= 1; }
+    renderMonthView();
+  });
+  document.getElementById('next-month').addEventListener('click', () => {
+    monthAnchorMonth += 1;
+    if (monthAnchorMonth > 11) { monthAnchorMonth = 0; monthAnchorYear += 1; }
+    renderMonthView();
+  });
+  document.getElementById('month-today-btn').addEventListener('click', () => {
+    monthAnchorYear = today.getFullYear();
+    monthAnchorMonth = today.getMonth();
+    renderMonthView();
+  });
+
+  function renderAll() {
+    renderEntryList();
+    renderWeekView();
+    renderMonthView();
+  }
+
+  // ---------------- Passcode gate ----------------
+  async function initApp() {
+    resetEntryForm();
+    const stored = getStoredPasscode();
+    if (stored) {
+      const ok = await verifyPasscode(stored);
+      if (ok) {
+        sb = createSupabaseClient(stored);
+        passcodeOverlay.style.display = 'none';
+        await boot();
+        return;
+      }
+      clearStoredPasscode();
+    }
+    passcodeOverlay.style.display = 'flex';
+    passcodeInput.focus();
+  }
+
+  passcodeForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const val = passcodeInput.value;
+    if (!val) return;
+    passcodeSubmitBtn.disabled = true;
+    passcodeError.style.display = 'none';
+    const ok = await verifyPasscode(val);
+    passcodeSubmitBtn.disabled = false;
+    if (ok) {
+      storePasscode(val);
+      sb = createSupabaseClient(val);
+      passcodeOverlay.style.display = 'none';
+      await boot();
+    } else {
+      passcodeError.style.display = 'block';
+      passcodeInput.select();
+    }
+  });
+
+  initApp();
+</script>
+</body>
+</html>
