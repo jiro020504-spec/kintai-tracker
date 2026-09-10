@@ -111,13 +111,14 @@
   /* ---- Form ---- */
   .field-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    grid-template-columns: repeat(4, 1fr);
     gap: 12px;
     margin-bottom: 14px;
   }
   .field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
   .field label { font-size: 0.78rem; color: var(--muted); }
   .field-full { grid-column: 1 / -1; }
+  .break-row { margin: -4px 0 14px; }
   input, select, textarea {
     padding: 8px 10px;
     border: 1px solid var(--border);
@@ -271,8 +272,10 @@
   .stat-row .stat-value { font-weight: 700; font-size: 1.05rem; }
   .stat-note { font-size: 0.76rem; color: var(--muted); margin-top: -6px; margin-bottom: 4px; }
 
-  @media (max-width: 480px) {
+  @media (max-width: 640px) {
     .field-grid { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 480px) {
     th, td { padding: 6px 6px; font-size: 0.78rem; }
     .memo-cell { max-width: 100px; }
   }
@@ -321,6 +324,7 @@
             <option value="代休">代休</option>
             <option value="在宅対応">在宅対応</option>
             <option value="休日出勤">休日出勤</option>
+            <option value="外出">外出</option>
           </select>
         </div>
         <div class="field">
@@ -331,10 +335,10 @@
           <label for="end-time">終了時刻</label>
           <input type="time" id="end-time" value="18:00">
         </div>
-        <div class="field">
-          <label>&nbsp;</label>
-          <label class="checkbox-label"><input type="checkbox" id="has-break" checked> 休憩(1h)あり</label>
-        </div>
+      </div>
+
+      <div class="break-row">
+        <label class="checkbox-label"><input type="checkbox" id="has-break" checked> 休憩(1h)あり</label>
       </div>
 
       <div class="field field-full" style="margin-bottom:14px;">
@@ -378,6 +382,15 @@
       <span class="stat-label">出勤日数</span>
       <span class="stat-value" id="week-attendance-count">-</span>
     </div>
+    <div class="stat-row">
+      <span class="stat-label">実働時間</span>
+      <span class="stat-value" id="week-actual-hours">-</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">差分(超過 / 不足)</span>
+      <span class="stat-value" id="week-diff-hours">-</span>
+    </div>
+    <div class="stat-note" id="week-baseline-note"></div>
     <div class="table-wrap" id="week-table" style="margin-top:14px;"></div>
   </div>
 
@@ -417,7 +430,7 @@
   const SUPABASE_URL = 'https://timytwkdfmchzojvzjzq.supabase.co';
   const SUPABASE_KEY = 'sb_publishable_QrhqeSQYfQbljjGyWIjx2A_rq7wFU5-';
   const PASSCODE_STORAGE_KEY = 'acraft-passcode';
-  const CATEGORIES = ['通常出勤', '代休', '在宅対応', '休日出勤'];
+  const CATEGORIES = ['通常出勤', '代休', '在宅対応', '休日出勤', '外出'];
   const QUICK_TAGS = ['のんちゃん対応', '達磨研修', '通常業務'];
   const BASIC_WEEKDAYS = [1, 3, 5]; // Mon, Wed, Fri (Date#getDay(): Sun=0)
   const WEEKDAY_JP = ['日', '月', '火', '水', '木', '金', '土'];
@@ -534,6 +547,9 @@
   const weekLabelEl = document.getElementById('week-label');
   const weekTableEl = document.getElementById('week-table');
   const weekAttendanceEl = document.getElementById('week-attendance-count');
+  const weekActualEl = document.getElementById('week-actual-hours');
+  const weekDiffEl = document.getElementById('week-diff-hours');
+  const weekBaselineNoteEl = document.getElementById('week-baseline-note');
 
   const monthLabelEl = document.getElementById('month-label');
   const monthActualEl = document.getElementById('month-actual-hours');
@@ -779,6 +795,13 @@
     );
     weekAttendanceEl.textContent = `${attendanceDates.size} / ${BASE_DAYS_PER_WEEK} 日`;
 
+    const weekMins = weekRecords.reduce((sum, r) => sum + workedMinutes(r), 0);
+    const weekBaselineMins = BASE_DAYS_PER_WEEK * BASE_HOURS_PER_DAY * 60;
+    const weekDiffMins = weekMins - weekBaselineMins;
+    weekActualEl.textContent = minutesToLabel(weekMins);
+    weekDiffEl.textContent = (weekDiffMins >= 0 ? '+' : '−') + minutesToLabel(Math.abs(weekDiffMins));
+    weekBaselineNoteEl.textContent = `基準: ${BASE_DAYS_PER_WEEK}日 × ${BASE_HOURS_PER_DAY}h = ${minutesToLabel(weekBaselineMins)}`;
+
     let rows = '';
     for (let i = 0; i < 7; i++) {
       const d = addDays(weekAnchor, i);
@@ -868,11 +891,14 @@
       const mins = workedMinutes(r);
       if (mins <= 0) return;
       const tags = r.tags.length ? r.tags : ['(タグなし)'];
+      const share = mins / tags.length;
       tags.forEach(t => {
-        tagTotals[t] = (tagTotals[t] || 0) + mins;
+        tagTotals[t] = (tagTotals[t] || 0) + share;
       });
     });
-    const tagRows = Object.entries(tagTotals).sort((a, b) => b[1] - a[1]);
+    const tagRows = Object.entries(tagTotals)
+      .map(([tag, mins]) => [tag, Math.round(mins)])
+      .sort((a, b) => b[1] - a[1]);
 
     if (tagRows.length === 0) {
       monthTagTableEl.innerHTML = '<div class="empty-state">この月の記録がありません。</div>';
