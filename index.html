@@ -523,7 +523,7 @@
       <label class="checkbox-label"><input type="checkbox" id="adj-with-memo" checked> メモも含める</label>
       <span class="stat-note" id="adj-copy-msg" style="margin:0;"></span>
     </div>
-    <div class="stat-note" style="margin-top:10px;">時間外対応の分数を、早く帰って不足した日に、古い順で自動的に当てはめています。当てはめは、出勤日の記録を直すと自動で変わります。</div>
+    <div class="stat-note" style="margin-top:10px;">時間外対応の分数と、出勤日で8時間を超えた分(月・水・金以外の日は全時間)を、早く帰って不足した日に、古い順で自動的に当てはめています。当てはめは、出勤日の記録を直すと自動で変わります。</div>
   </div>
 </div>
 
@@ -1243,6 +1243,27 @@
       .map(r => ({ rec: r, left: r.minutes, uses: [] }))
       .sort((a, b) => (a.rec.work_date < b.rec.work_date ? -1 : a.rec.work_date > b.rec.work_date ? 1 : 0));
 
+    // Overtime on regular work days also counts as a credit: >8h on Mon/Wed/Fri, or all hours on other days
+    // (休日出勤 is excluded: it is paired with 代休 separately).
+    const dayWork = {};
+    records.forEach(r => {
+      if (r.category === OFF_CAT || r.category === '代休' || r.category === '休日出勤') return;
+      dayWork[r.work_date] = (dayWork[r.work_date] || 0) + workedMinutes(r);
+    });
+    Object.keys(dayWork).forEach(d => {
+      const isBasic = BASIC_WEEKDAYS.includes(parseYMD(d).getDay());
+      const excess = isBasic ? dayWork[d] - BASE_DAY_MINS : dayWork[d];
+      if (excess > 0 && d <= todayStr) {
+        const times = records.filter(r => r.work_date === d && r.category !== OFF_CAT && r.start_time && r.end_time)
+          .map(r => `${hhmm(r.start_time)}〜${hhmm(r.end_time)}`).join(', ');
+        pool.push({
+          rec: { work_date: d, category: '出勤日の超過', minutes: excess, counterparty: '出勤日の超過', method: times, memo: '', synthetic: true },
+          left: excess, uses: []
+        });
+      }
+    });
+    pool.sort((a, b) => (a.rec.work_date < b.rec.work_date ? -1 : a.rec.work_date > b.rec.work_date ? 1 : (a.rec.synthetic ? 1 : 0) - (b.rec.synthetic ? 1 : 0)));
+
     const workedByDate = {};
     const restDays = new Set();
     records.forEach(r => {
@@ -1274,10 +1295,10 @@
 
   function offHoursLines(line, start, end) {
     const sStr = formatYMD(start), eStr = formatYMD(end);
-    const total = records.filter(r => r.category === OFF_CAT && r.work_date >= sStr && r.work_date <= eStr)
-      .reduce((sum, r) => sum + workedMinutes(r), 0);
     const alloc = computeAllocations();
-    return line('時間外対応(今月)', minutesToLabel(total)) +
+    const total = alloc.pool.filter(e => e.rec.work_date >= sStr && e.rec.work_date <= eStr)
+      .reduce((sum, e) => sum + e.rec.minutes, 0);
+    return line('時間外対応・超過(今月)', minutesToLabel(total)) +
       line('まだ当てていない分', minutesToLabel(alloc.unused));
   }
 
@@ -1291,7 +1312,8 @@
     const alloc = computeAllocations();
     const monthOff = alloc.pool.filter(e => e.rec.work_date >= sStr && e.rec.work_date <= eStr);
     const monthShort = alloc.shortDays.filter(d => d.date >= sStr && d.date <= eStr);
-    const offTotal = monthOff.reduce((sum, e) => sum + e.rec.minutes, 0);
+    const offTotal = monthOff.filter(e => !e.rec.synthetic).reduce((sum, e) => sum + e.rec.minutes, 0);
+    const overTotal = monthOff.filter(e => e.rec.synthetic).reduce((sum, e) => sum + e.rec.minutes, 0);
     const shortTotal = monthShort.reduce((sum, d) => sum + d.short, 0);
     const coveredTotal = monthShort.reduce((sum, d) => sum + (d.short - d.left), 0);
     const byParty = {};
@@ -1301,7 +1323,7 @@
     });
     const dayTimes = (date) => records.filter(r => r.work_date === date && r.category !== OFF_CAT && r.start_time && r.end_time)
       .map(r => `${hhmm(r.start_time)}〜${hhmm(r.end_time)}`).join(', ');
-    return { y, mo, alloc, monthOff, monthShort, offTotal, shortTotal, coveredTotal, byParty, dayTimes };
+    return { y, mo, alloc, monthOff, monthShort, offTotal, overTotal, shortTotal, coveredTotal, byParty, dayTimes };
   }
 
   function renderAdjustView() {
@@ -1312,6 +1334,7 @@
 
     let html = '';
     html += statLine('時間外対応(この月の合計)', minutesToLabel(M.offTotal));
+    html += statLine('出勤日の超過(この月の合計)', minutesToLabel(M.overTotal));
     html += statLine('早退などの不足(この月)', minutesToLabel(M.shortTotal));
     html += statLine('うち相殺済み', minutesToLabel(M.coveredTotal));
     html += statLine('相殺できていない不足', minutesToLabel(M.shortTotal - M.coveredTotal));
@@ -1329,9 +1352,9 @@
         </div>`).join('');
     }
 
-    html += '<hr class="rule"><h3>時間外対応の一覧</h3>';
+    html += '<hr class="rule"><h3>時間外対応と出勤日の超過の一覧</h3>';
     if (M.monthOff.length === 0) {
-      html += '<div class="empty-state">この月の時間外対応の記録はありません。</div>';
+      html += '<div class="empty-state">この月の時間外対応・超過の記録はありません。</div>';
     } else {
       html += M.monthOff.map(e => {
         const r = e.rec;
@@ -1358,9 +1381,9 @@
     const M = buildAdjustModel();
     const L = [];
     L.push(`${M.y}年${M.mo + 1}月 時間外対応と調整の記録`);
-    L.push(`時間外対応の合計: ${minutesToLabel(M.offTotal)} / 早退などの不足: ${minutesToLabel(M.shortTotal)} / 相殺済み: ${minutesToLabel(M.coveredTotal)}`);
+    L.push(`時間外対応の合計: ${minutesToLabel(M.offTotal)} / 出勤日の超過: ${minutesToLabel(M.overTotal)} / 早退などの不足: ${minutesToLabel(M.shortTotal)} / 相殺済み: ${minutesToLabel(M.coveredTotal)}`);
     L.push('');
-    L.push('■ 時間外対応');
+    L.push('■ 時間外対応・出勤日の超過');
     if (M.monthOff.length === 0) L.push('(記録なし)');
     M.monthOff.forEach(e => {
       const r = e.rec;
