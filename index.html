@@ -84,6 +84,20 @@
   .adj-item .emph { font-weight: 700; }
   input[type="date"], input[type="time"] { -webkit-appearance: none; appearance: none; min-height: 38px; max-width: 100%; }
 
+
+  .hl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 28px; }
+  .hl-block { min-width: 0; }
+  .hl-title { font-size: 0.8rem; color: var(--muted); }
+  .hl-value { font-size: 1.5rem; font-weight: 700; line-height: 1.25; }
+  .hl-tag { font-size: 0.8rem; font-weight: 600; margin-left: 6px; color: var(--muted); }
+  .bar { position: relative; height: 3px; background: var(--border); margin: 6px 0 8px; }
+  .bar i { display: block; height: 3px; background: var(--main); }
+  .bar b { position: absolute; top: -4px; width: 2px; height: 11px; background: var(--text); }
+  .hl-sub { font-size: 0.78rem; color: var(--muted); }
+  details.status-details { margin-top: 6px; }
+  details.status-details summary { cursor: pointer; font-size: 0.82rem; color: var(--muted); padding: 4px 0; }
+  details.status-details[open] summary { margin-bottom: 6px; }
+
   /* ---- Tabs ---- */
   .tabs {
     overflow-x: auto;
@@ -690,6 +704,16 @@
     return records.filter(r => r.work_date === dateStr).reduce((sum, r) => sum + workedMinutes(r), 0);
   }
 
+  function bigSigned(mins) {
+    if (mins === 0) return '±0';
+    return (mins > 0 ? '+' : '−') + minutesToLabel(Math.abs(mins));
+  }
+  function barHtml(st) {
+    const pct = st.baseline > 0 ? Math.min(100, Math.round(st.actual / st.baseline * 100)) : 0;
+    const mark = st.baseline > 0 ? Math.min(100, Math.round(st.baselineToDate / st.baseline * 100)) : 0;
+    return `<div class="bar"><i style="width:${pct}%"></i><b style="left:${mark}%"></b></div>`;
+  }
+
   function renderStatusPanel() {
     const [ws, we] = currentWeekRange();
     const [ms, me] = currentMonthRange();
@@ -697,28 +721,37 @@
     const m = periodStats(ms, me);
     const todayStr = formatYMD(today);
     const line = (k, v) => `<div class="status-line"><span class="k">${k}</span><span class="v">${v}</span></div>`;
+    const head = (title, st) => `
+      <div class="hl-block">
+        <div class="hl-title">${title}</div>
+        <div class="hl-value">${bigSigned(st.diffNow)}<span class="hl-tag">${st.diffNow === 0 ? 'ちょうど' : (st.diffNow > 0 ? '超過' : '不足')}</span></div>
+        ${barHtml(st)}
+        <div class="hl-sub">${minutesToLabel(st.actual)} / ${minutesToLabel(st.baseline)}</div>
+      </div>`;
     statusPanelEl.innerHTML = `
       <div class="save-note" id="save-note"></div>
-      <h3>いまの状況(${today.getMonth() + 1}/${today.getDate()} ${WEEKDAY_JP[today.getDay()]})</h3>
-      <div class="status-grid">
-        <div class="status-block">
-          <div class="emph" style="font-size:0.84rem;margin-bottom:2px;">今週 ${ws.getMonth() + 1}/${ws.getDate()}〜${we.getMonth() + 1}/${we.getDate()}</div>
-          ${line('今日の実働', minutesToLabel(dayMinutes(todayStr)))}
-          ${line('今週の実働 / 基準', `${minutesToLabel(w.actual)} / ${minutesToLabel(w.baseline)}`)}
-          ${line('現時点の過不足', signedLabel(w.diffNow))}
-          ${line('週末時点の過不足', signedLabel(w.diffFinal))}
-          ${line('残り', remainingText(w))}
-        </div>
-        <div class="status-block">
-          <div class="emph" style="font-size:0.84rem;margin-bottom:2px;">今月 ${ms.getMonth() + 1}月</div>
-          ${line('今月の実働 / 基準', `${minutesToLabel(m.actual)} / ${minutesToLabel(m.baseline)}`)}
-          ${line('現時点の過不足', signedLabel(m.diffNow))}
-          ${line('月末時点の過不足', signedLabel(m.diffFinal))}
-          ${line('残り', remainingText(m))}
-          ${offHoursLines(line, ms, me)}
-        </div>
+      <div class="hl-grid">
+        ${head('今週', w)}
+        ${head('今月', m)}
       </div>
-      <div class="status-note">基準 = 月・水・金の日数 × ${BASE_HOURS_PER_DAY}h(今月は${m.baselineDays}日 = ${minutesToLabel(m.baseline)})。現時点の過不足 = 実働 − 今日までの基準(今日は入力済みなら含む)。</div>`;
+      <details class="status-details">
+        <summary>詳細を開く</summary>
+        <div class="status-grid">
+          <div class="status-block">
+            <div class="emph" style="font-size:0.84rem;margin-bottom:2px;">今週 ${ws.getMonth() + 1}/${ws.getDate()}〜${we.getMonth() + 1}/${we.getDate()}</div>
+            ${line('今日の実働', minutesToLabel(dayMinutes(todayStr)))}
+            ${line('週末時点の過不足', signedLabel(w.diffFinal))}
+            ${line('残り', remainingText(w))}
+          </div>
+          <div class="status-block">
+            <div class="emph" style="font-size:0.84rem;margin-bottom:2px;">今月 ${ms.getMonth() + 1}月</div>
+            ${line('月末時点の過不足', signedLabel(m.diffFinal))}
+            ${line('残り', remainingText(m))}
+            ${offHoursLines(line, ms, me)}
+          </div>
+        </div>
+        <div class="status-note">基準 = 月・水・金の日数 × ${BASE_HOURS_PER_DAY}h(今月は${m.baselineDays}日 = ${minutesToLabel(m.baseline)})。現時点の過不足 = 実働 − 今日までの基準(今日は入力済みなら含む)。上の線は実働の進み具合で、縦棒が今日までの基準の位置です。</div>
+      </details>`;
     if (lastSaveNote) {
       const el = document.getElementById('save-note');
       el.textContent = lastSaveNote;
