@@ -56,6 +56,20 @@
   }
   .emph { font-weight: 700; }
 
+
+  /* ---- Status panel (always visible) ---- */
+  .status-panel { border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 12px 0 10px; margin: 0 0 18px; }
+  .status-panel h3 { margin: 0 0 6px; }
+  .status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 28px; }
+  .status-block { min-width: 0; padding-bottom: 6px; }
+  .status-line { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; border-bottom: 1px solid var(--border); font-size: 0.84rem; }
+  .status-line:last-of-type { border-bottom: none; }
+  .status-line .k { color: var(--muted); }
+  .status-line .v { font-weight: 700; text-align: right; }
+  .status-note { font-size: 0.76rem; color: var(--muted); margin-top: 4px; }
+  .save-note { font-size: 0.84rem; font-weight: 700; padding: 0 0 8px; margin-bottom: 8px; border-bottom: 1px solid var(--border); display: none; }
+  @media (max-width: 560px) { .status-grid { grid-template-columns: 1fr; } }
+
   /* ---- Tabs ---- */
   .tabs {
     display: flex;
@@ -301,6 +315,8 @@
   <h1>勤怠管理</h1>
   <p class="subtitle">週3勤務(月・水・金基準) / 1日実働8h / 月給固定</p>
 
+  <div class="status-panel" id="status-panel"></div>
+
   <div class="tabs">
     <button class="tab-btn active" data-tab="entry">日次入力</button>
     <button class="tab-btn" data-tab="week">週間ビュー</button>
@@ -391,6 +407,18 @@
       <span class="stat-value" id="week-diff-hours">-</span>
     </div>
     <div class="stat-note" id="week-baseline-note"></div>
+    <div class="stat-row">
+      <span class="stat-label">今日までの基準</span>
+      <span class="stat-value" id="week-base-todate">-</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">現時点の過不足</span>
+      <span class="stat-value" id="week-diff-now">-</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">残り(基準に届くまで)</span>
+      <span class="stat-value" id="week-remaining">-</span>
+    </div>
     <div class="table-wrap" id="week-table" style="margin-top:14px;"></div>
   </div>
 
@@ -418,6 +446,19 @@
       <span class="stat-label">差分(超過 / 不足)</span>
       <span class="stat-value" id="month-diff-hours">-</span>
     </div>
+    <div class="stat-row">
+      <span class="stat-label">今日までの基準</span>
+      <span class="stat-value" id="month-base-todate">-</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">現時点の過不足</span>
+      <span class="stat-value" id="month-diff-now">-</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">残り(基準に届くまで)</span>
+      <span class="stat-value" id="month-remaining">-</span>
+    </div>
+    <div class="stat-note" id="month-remaining-note"></div>
 
     <hr class="rule">
     <h3>タグ別集計</h3>
@@ -510,6 +551,126 @@
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
+  // ---------------- Baseline / status helpers ----------------
+  const BASE_DAY_MINS = BASE_HOURS_PER_DAY * 60;
+
+  // Count basic working days (Mon/Wed/Fri) between two Date objects, inclusive.
+  function countBasicDays(from, to) {
+    let n = 0;
+    for (let d = new Date(from); d <= to; d = addDays(d, 1)) {
+      if (BASIC_WEEKDAYS.includes(d.getDay())) n += 1;
+    }
+    return n;
+  }
+
+  function signedLabel(mins) {
+    if (mins === 0) return '±0(ちょうど)';
+    return (mins > 0 ? '+' : '−') + minutesToLabel(Math.abs(mins)) + (mins > 0 ? '(超過)' : '(不足)');
+  }
+
+  // Stats for a period [start, end] (Date objects). Baseline = basic days in period x 8h.
+  function periodStats(start, end) {
+    const sStr = formatYMD(start), eStr = formatYMD(end);
+    const recs = records.filter(r => r.work_date >= sStr && r.work_date <= eStr);
+    const actual = recs.reduce((sum, r) => sum + workedMinutes(r), 0);
+    const baselineDays = countBasicDays(start, end);
+    const baseline = baselineDays * BASE_DAY_MINS;
+
+    const todayStr = formatYMD(today);
+    const todayHasRecord = records.some(r => r.work_date === todayStr && workedMinutes(r) > 0);
+    // basic days counted as "elapsed": before today, plus today if today's work is already entered
+    let elapsedEnd;
+    if (end < today) elapsedEnd = end;
+    else if (start > today) elapsedEnd = null;
+    else elapsedEnd = todayHasRecord ? today : addDays(today, -1);
+    const elapsedDays = (elapsedEnd && elapsedEnd >= start) ? countBasicDays(start, elapsedEnd) : 0;
+    const baselineToDate = elapsedDays * BASE_DAY_MINS;
+
+    // basic days still ahead (today counts as ahead until today's work is entered)
+    let futureStart;
+    if (end < today) futureStart = null;
+    else if (start > today) futureStart = start;
+    else futureStart = todayHasRecord ? addDays(today, 1) : today;
+    const remainingDays = (futureStart && futureStart <= end) ? countBasicDays(futureStart, end) : 0;
+
+    return {
+      actual, baseline, baselineDays, baselineToDate, elapsedDays,
+      diffFinal: actual - baseline,
+      diffNow: actual - baselineToDate,
+      remainingNeeded: Math.max(0, baseline - actual),
+      remainingDays
+    };
+  }
+
+  function currentWeekRange() {
+    const ws = startOfWeek(today);
+    return [ws, addDays(ws, 6)];
+  }
+  function currentMonthRange() {
+    return [new Date(today.getFullYear(), today.getMonth(), 1), new Date(today.getFullYear(), today.getMonth() + 1, 0)];
+  }
+
+  function remainingText(st) {
+    if (st.actual >= st.baseline) return `基準に到達済み(${signedLabel(st.diffFinal)})`;
+    const need = minutesToLabel(st.remainingNeeded);
+    if (st.remainingDays > 0) {
+      const per = Math.ceil(st.remainingNeeded / st.remainingDays);
+      return `あと${need}(基本日あと${st.remainingDays}日なら1日${minutesToLabel(per)})`;
+    }
+    return `あと${need}(基本勤務日は残りなし。休日出勤などで補う)`;
+  }
+
+  function dayMinutes(dateStr) {
+    return records.filter(r => r.work_date === dateStr).reduce((sum, r) => sum + workedMinutes(r), 0);
+  }
+
+  function renderStatusPanel() {
+    const [ws, we] = currentWeekRange();
+    const [ms, me] = currentMonthRange();
+    const w = periodStats(ws, we);
+    const m = periodStats(ms, me);
+    const todayStr = formatYMD(today);
+    const line = (k, v) => `<div class="status-line"><span class="k">${k}</span><span class="v">${v}</span></div>`;
+    statusPanelEl.innerHTML = `
+      <div class="save-note" id="save-note"></div>
+      <h3>いまの状況(${today.getMonth() + 1}/${today.getDate()} ${WEEKDAY_JP[today.getDay()]})</h3>
+      <div class="status-grid">
+        <div class="status-block">
+          <div class="emph" style="font-size:0.84rem;margin-bottom:2px;">今週 ${ws.getMonth() + 1}/${ws.getDate()}〜${we.getMonth() + 1}/${we.getDate()}</div>
+          ${line('今日の実働', minutesToLabel(dayMinutes(todayStr)))}
+          ${line('今週の実働 / 基準', `${minutesToLabel(w.actual)} / ${minutesToLabel(w.baseline)}`)}
+          ${line('現時点の過不足', signedLabel(w.diffNow))}
+          ${line('週末時点の過不足', signedLabel(w.diffFinal))}
+          ${line('残り', remainingText(w))}
+        </div>
+        <div class="status-block">
+          <div class="emph" style="font-size:0.84rem;margin-bottom:2px;">今月 ${ms.getMonth() + 1}月</div>
+          ${line('今月の実働 / 基準', `${minutesToLabel(m.actual)} / ${minutesToLabel(m.baseline)}`)}
+          ${line('現時点の過不足', signedLabel(m.diffNow))}
+          ${line('月末時点の過不足', signedLabel(m.diffFinal))}
+          ${line('残り', remainingText(m))}
+        </div>
+      </div>
+      <div class="status-note">基準 = 月・水・金の日数 × ${BASE_HOURS_PER_DAY}h(今月は${m.baselineDays}日 = ${minutesToLabel(m.baseline)})。現時点の過不足 = 実働 − 今日までの基準(今日は入力済みなら含む)。</div>`;
+    if (lastSaveNote) {
+      const el = document.getElementById('save-note');
+      el.textContent = lastSaveNote;
+      el.style.display = 'block';
+    }
+  }
+
+  let lastSaveNote = '';
+  function buildSaveNote(workDate) {
+    const [ws, we] = currentWeekRange();
+    const [ms, me] = currentMonthRange();
+    const w = periodStats(ws, we);
+    const m = periodStats(ms, me);
+    return `記録しました。${workDate}の実働 ${minutesToLabel(dayMinutes(workDate))}。` +
+      `今週 ${minutesToLabel(w.actual)} / ${minutesToLabel(w.baseline)}(現時点 ${signedLabel(w.diffNow)})。` +
+      `今月 ${minutesToLabel(m.actual)} / ${minutesToLabel(m.baseline)}(現時点 ${signedLabel(m.diffNow)})。`;
+  }
+
+
   let records = [];
   let editingId = null;
   let formTags = [];
@@ -523,6 +684,7 @@
   const passcodeError = document.getElementById('passcode-error');
   const passcodeSubmitBtn = document.getElementById('passcode-submit');
 
+  const statusPanelEl = document.getElementById('status-panel');
   const entryForm = document.getElementById('entry-form');
   const entryFormTitle = document.getElementById('entry-form-title');
   const submitBtn = document.getElementById('submit-btn');
@@ -713,6 +875,7 @@
       }
       resetEntryForm();
       records = await fetchRecords();
+      lastSaveNote = buildSaveNote(workDate);
       renderAll();
     } catch (err) {
       alert('保存に失敗しました: ' + err.message);
@@ -799,8 +962,12 @@
     const weekBaselineMins = BASE_DAYS_PER_WEEK * BASE_HOURS_PER_DAY * 60;
     const weekDiffMins = weekMins - weekBaselineMins;
     weekActualEl.textContent = minutesToLabel(weekMins);
-    weekDiffEl.textContent = (weekDiffMins >= 0 ? '+' : '−') + minutesToLabel(Math.abs(weekDiffMins));
+    weekDiffEl.textContent = signedLabel(weekDiffMins);
     weekBaselineNoteEl.textContent = `基準: ${BASE_DAYS_PER_WEEK}日 × ${BASE_HOURS_PER_DAY}h = ${minutesToLabel(weekBaselineMins)}`;
+    const wst = periodStats(weekAnchor, weekEnd);
+    document.getElementById('week-base-todate').textContent = minutesToLabel(wst.baselineToDate);
+    document.getElementById('week-diff-now').textContent = signedLabel(wst.diffNow);
+    document.getElementById('week-remaining').textContent = remainingText(wst);
 
     let rows = '';
     for (let i = 0; i < 7; i++) {
@@ -876,15 +1043,20 @@
     const monthRecords = records.filter(r => r.work_date >= monthStartStr && r.work_date <= monthEndStr);
     const totalMins = monthRecords.reduce((sum, r) => sum + workedMinutes(r), 0);
 
-    const weeks = countWeeksInMonth(monthAnchorYear, monthAnchorMonth);
-    const baselineMins = BASE_DAYS_PER_WEEK * BASE_HOURS_PER_DAY * 60 * weeks;
+    const mst = periodStats(new Date(monthAnchorYear, monthAnchorMonth, 1), new Date(monthAnchorYear, monthAnchorMonth + 1, 0));
+    const baselineMins = mst.baseline;
     const diffMins = totalMins - baselineMins;
 
     monthActualEl.textContent = minutesToLabel(totalMins);
     monthBaselineEl.textContent = minutesToLabel(baselineMins);
     monthBaselineNoteEl.textContent =
-      `内訳: ${BASE_DAYS_PER_WEEK}日 × ${BASE_HOURS_PER_DAY}h × ${weeks}週(この月の週数)`;
-    monthDiffEl.textContent = (diffMins >= 0 ? '+' : '−') + minutesToLabel(Math.abs(diffMins));
+      `内訳: 月・水・金の${mst.baselineDays}日 × ${BASE_HOURS_PER_DAY}h(祝日も基本勤務日に含む)`;
+    monthDiffEl.textContent = signedLabel(diffMins);
+    document.getElementById('month-base-todate').textContent = minutesToLabel(mst.baselineToDate);
+    document.getElementById('month-diff-now').textContent = signedLabel(mst.diffNow);
+    document.getElementById('month-remaining').textContent = remainingText(mst);
+    document.getElementById('month-remaining-note').textContent =
+      mst.remainingDays > 0 ? `この月の基本勤務日の残り: ${mst.remainingDays}日` : '';
 
     const tagTotals = {};
     monthRecords.forEach(r => {
@@ -934,6 +1106,7 @@
   });
 
   function renderAll() {
+    renderStatusPanel();
     renderEntryList();
     renderWeekView();
     renderMonthView();
