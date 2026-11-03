@@ -70,14 +70,30 @@
   .save-note { font-size: 0.84rem; font-weight: 700; padding: 0 0 8px; margin-bottom: 8px; border-bottom: 1px solid var(--border); display: none; }
   @media (max-width: 560px) { .status-grid { grid-template-columns: 1fr; } }
 
+  /* ---- Off-hours form / adjust view ---- */
+  .minute-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  .minute-row button {
+    padding: 6px 12px; font-size: 0.84rem; background: none; border: 1px solid var(--border);
+    color: var(--text); cursor: pointer; font-family: inherit;
+  }
+  .minute-row button.active { border-color: var(--main); font-weight: 700; outline: 1px solid var(--main); }
+  #offhours-fields { margin-bottom: 14px; }
+  #offhours-fields .sub-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 10px; }
+  .adj-item { padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 0.86rem; }
+  .adj-item .sub { color: var(--muted); font-size: 0.8rem; padding-left: 12px; }
+  .adj-item .emph { font-weight: 700; }
+  input[type="date"], input[type="time"] { -webkit-appearance: none; appearance: none; min-height: 38px; max-width: 100%; }
+
   /* ---- Tabs ---- */
   .tabs {
+    overflow-x: auto;
     display: flex;
     gap: 4px;
     margin-bottom: 20px;
     border-bottom: 1px solid var(--border);
   }
   .tab-btn {
+    white-space: nowrap;
     background: none;
     border: none;
     border-bottom: 2px solid transparent;
@@ -321,6 +337,7 @@
     <button class="tab-btn active" data-tab="entry">日次入力</button>
     <button class="tab-btn" data-tab="week">週間ビュー</button>
     <button class="tab-btn" data-tab="month">月間サマリー</button>
+    <button class="tab-btn" data-tab="adjust">調整メモ</button>
   </div>
 
   <!-- ============ Tab: 日次入力 ============ -->
@@ -341,19 +358,44 @@
             <option value="在宅対応">在宅対応</option>
             <option value="休日出勤">休日出勤</option>
             <option value="外出">外出</option>
+            <option value="時間外対応">時間外対応</option>
           </select>
         </div>
-        <div class="field">
+        <div class="field" id="start-field">
           <label for="start-time">開始時刻</label>
           <input type="time" id="start-time" value="09:00">
         </div>
-        <div class="field">
+        <div class="field" id="end-field">
           <label for="end-time">終了時刻</label>
           <input type="time" id="end-time" value="18:00">
         </div>
       </div>
 
-      <div class="break-row">
+      <div id="offhours-fields" style="display:none;">
+        <label style="font-size:0.78rem;color:var(--muted);display:block;margin-bottom:4px;">対応した時間(分)</label>
+        <div class="minute-row" id="minute-row"></div>
+        <input type="number" id="off-minutes" min="1" step="1" placeholder="分数を直接入力" style="margin-bottom:10px;">
+        <div class="sub-grid">
+          <div class="field">
+            <label for="off-counterparty">相手先</label>
+            <input type="text" id="off-counterparty" placeholder="例:T&G" list="counterparty-list" autocomplete="off">
+            <datalist id="counterparty-list"></datalist>
+          </div>
+          <div class="field">
+            <label for="off-method">手段</label>
+            <select id="off-method">
+              <option value="メール">メール</option>
+              <option value="電話">電話</option>
+              <option value="LINE">LINE</option>
+              <option value="打合せ">打合せ</option>
+              <option value="その他">その他</option>
+            </select>
+          </div>
+        </div>
+        <div class="tag-quick" id="counterparty-quick"></div>
+      </div>
+
+      <div class="break-row" id="break-row">
         <label class="checkbox-label"><input type="checkbox" id="has-break" checked> 休憩(1h)あり</label>
       </div>
 
@@ -464,6 +506,25 @@
     <h3>タグ別集計</h3>
     <div class="table-wrap" id="month-tag-table"></div>
   </div>
+
+  <!-- ============ Tab: 調整メモ ============ -->
+  <div class="tab-panel" id="tab-adjust">
+    <div class="period-nav">
+      <div class="period-nav-buttons">
+        <button class="nav-btn" id="prev-adj" aria-label="前の月">&#9664;</button>
+        <button class="nav-btn" id="next-adj" aria-label="次の月">&#9654;</button>
+        <button class="today-btn" id="adj-today-btn">今月</button>
+      </div>
+      <div class="period-label" id="adj-label"></div>
+    </div>
+    <div id="adj-body"></div>
+    <div style="margin-top:14px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+      <button type="button" class="btn-secondary" id="adj-copy">この月の内容をコピー</button>
+      <label class="checkbox-label"><input type="checkbox" id="adj-with-memo" checked> メモも含める</label>
+      <span class="stat-note" id="adj-copy-msg" style="margin:0;"></span>
+    </div>
+    <div class="stat-note" style="margin-top:10px;">時間外対応の分数を、早く帰って不足した日に、古い順で自動的に当てはめています。当てはめは、出勤日の記録を直すと自動で変わります。</div>
+  </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -471,7 +532,10 @@
   const SUPABASE_URL = 'https://timytwkdfmchzojvzjzq.supabase.co';
   const SUPABASE_KEY = 'sb_publishable_QrhqeSQYfQbljjGyWIjx2A_rq7wFU5-';
   const PASSCODE_STORAGE_KEY = 'acraft-passcode';
-  const CATEGORIES = ['通常出勤', '代休', '在宅対応', '休日出勤', '外出'];
+  const CATEGORIES = ['通常出勤', '代休', '在宅対応', '休日出勤', '外出', '時間外対応'];
+  const OFF_CAT = '時間外対応';
+  const MINUTE_CHOICES = [5, 10, 15, 30, 45, 60, 90];
+  const DEFAULT_COUNTERPARTIES = ['T&G', 'JE', '蔦屋', '内職の方', 'のんちゃん', '社長'];
   const QUICK_TAGS = ['のんちゃん対応', '達磨研修', '通常業務'];
   const BASIC_WEEKDAYS = [1, 3, 5]; // Mon, Wed, Fri (Date#getDay(): Sun=0)
   const WEEKDAY_JP = ['日', '月', '火', '水', '木', '金', '土'];
@@ -536,10 +600,12 @@
   function minutesToLabel(mins) {
     const h = Math.floor(mins / 60);
     const m = mins % 60;
+    if (h === 0 && m > 0) return `${m}分`;
     return m === 0 ? `${h}時間` : `${h}時間${m}分`;
   }
 
   function workedMinutes(rec) {
+    if (rec.category === OFF_CAT) return Math.max(0, Number(rec.minutes) || 0);
     if (!rec.start_time || !rec.end_time) return 0;
     const [sh, sm] = hhmm(rec.start_time).split(':').map(Number);
     const [eh, em] = hhmm(rec.end_time).split(':').map(Number);
@@ -577,7 +643,7 @@
     const baseline = baselineDays * BASE_DAY_MINS;
 
     const todayStr = formatYMD(today);
-    const todayHasRecord = records.some(r => r.work_date === todayStr && workedMinutes(r) > 0);
+    const todayHasRecord = records.some(r => r.work_date === todayStr && r.category !== OFF_CAT && workedMinutes(r) > 0);
     // basic days counted as "elapsed": before today, plus today if today's work is already entered
     let elapsedEnd;
     if (end < today) elapsedEnd = end;
@@ -649,6 +715,7 @@
           ${line('現時点の過不足', signedLabel(m.diffNow))}
           ${line('月末時点の過不足', signedLabel(m.diffFinal))}
           ${line('残り', remainingText(m))}
+          ${offHoursLines(line, ms, me)}
         </div>
       </div>
       <div class="status-note">基準 = 月・水・金の日数 × ${BASE_HOURS_PER_DAY}h(今月は${m.baselineDays}日 = ${minutesToLabel(m.baseline)})。現時点の過不足 = 実働 − 今日までの基準(今日は入力済みなら含む)。</div>`;
@@ -697,10 +764,42 @@
 
   function updateTimeFieldsForCategory() {
     const isRestDay = categorySelect.value === '代休';
+    const isOff = categorySelect.value === OFF_CAT;
     startTimeInput.disabled = isRestDay;
     endTimeInput.disabled = isRestDay;
     hasBreakInput.disabled = isRestDay;
+    document.getElementById('start-field').style.display = isOff ? 'none' : '';
+    document.getElementById('end-field').style.display = isOff ? 'none' : '';
+    document.getElementById('break-row').style.display = isOff ? 'none' : '';
+    document.getElementById('offhours-fields').style.display = isOff ? 'block' : 'none';
+    if (isOff) renderOffHoursChoices();
   }
+
+  function renderOffHoursChoices() {
+    const cur = Number(document.getElementById('off-minutes').value) || 0;
+    document.getElementById('minute-row').innerHTML = MINUTE_CHOICES.map(m =>
+      `<button type="button" data-min="${m}" class="${cur === m ? 'active' : ''}">${m}分</button>`).join('');
+    const recent = [];
+    records.slice().sort((a, b) => (a.work_date < b.work_date ? 1 : -1)).forEach(r => {
+      if (r.counterparty && !recent.includes(r.counterparty)) recent.push(r.counterparty);
+    });
+    const names = [...recent, ...DEFAULT_COUNTERPARTIES.filter(n => !recent.includes(n))].slice(0, 10);
+    document.getElementById('counterparty-list').innerHTML = names.map(n => `<option value="${escapeHtml(n)}">`).join('');
+    document.getElementById('counterparty-quick').innerHTML = names.map(n =>
+      `<button type="button" data-cp="${escapeHtml(n)}">${escapeHtml(n)}</button>`).join('');
+  }
+  document.getElementById('minute-row').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-min]');
+    if (!b) return;
+    document.getElementById('off-minutes').value = b.dataset.min;
+    renderOffHoursChoices();
+  });
+  document.getElementById('off-minutes').addEventListener('input', renderOffHoursChoices);
+  document.getElementById('counterparty-quick').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-cp]');
+    if (!b) return;
+    document.getElementById('off-counterparty').value = b.dataset.cp;
+  });
   categorySelect.addEventListener('change', updateTimeFieldsForCategory);
   const tagQuickEl = document.getElementById('tag-quick');
   const tagChipsEl = document.getElementById('tag-chips');
@@ -782,7 +881,10 @@
       end_time: row.end_time,
       has_break: row.has_break,
       memo: row.memo || '',
-      tags: Array.isArray(row.tags) ? row.tags : []
+      tags: Array.isArray(row.tags) ? row.tags : [],
+      minutes: Number(row.minutes) || 0,
+      counterparty: row.counterparty || '',
+      method: row.method || ''
     };
   }
 
@@ -810,6 +912,9 @@
     document.getElementById('start-time').value = '09:00';
     document.getElementById('end-time').value = '18:00';
     document.getElementById('has-break').checked = true;
+    document.getElementById('off-minutes').value = '';
+    document.getElementById('off-counterparty').value = '';
+    document.getElementById('off-method').value = 'メール';
     formTags = [];
     renderTagChips();
     editingId = null;
@@ -828,6 +933,9 @@
     document.getElementById('end-time').value = hhmm(rec.end_time);
     document.getElementById('has-break').checked = !!rec.has_break;
     document.getElementById('memo').value = rec.memo || '';
+    document.getElementById('off-minutes').value = rec.minutes || '';
+    document.getElementById('off-counterparty').value = rec.counterparty || '';
+    document.getElementById('off-method').value = rec.method || 'メール';
     formTags = [...rec.tags];
     renderTagChips();
     entryFormTitle.textContent = '記録を編集';
@@ -848,21 +956,34 @@
     const memo = document.getElementById('memo').value.trim();
 
     if (!workDate) return;
-    if (category !== '代休' && (!startTime || !endTime)) {
+    const isOff = category === OFF_CAT;
+    const offMinutes = Math.round(Number(document.getElementById('off-minutes').value) || 0);
+    if (isOff && offMinutes <= 0) {
+      alert('対応した時間(分)を入力してください。');
+      return;
+    }
+    if (!isOff && category !== '代休' && (!startTime || !endTime)) {
       alert('開始時刻・終了時刻を入力してください(代休以外は必須です)。');
       return;
     }
 
     const isRestDay = category === '代休';
+    const noTime = isRestDay || isOff;
     const payload = {
       work_date: workDate,
       category,
-      start_time: isRestDay ? null : (startTime || null),
-      end_time: isRestDay ? null : (endTime || null),
-      has_break: isRestDay ? false : hasBreak,
+      start_time: noTime ? null : (startTime || null),
+      end_time: noTime ? null : (endTime || null),
+      has_break: noTime ? false : hasBreak,
       memo,
       tags: formTags
     };
+    // New columns are only sent for 時間外対応, so other records keep saving even before the SQL migration is run.
+    if (isOff) {
+      payload.minutes = offMinutes;
+      payload.counterparty = document.getElementById('off-counterparty').value.trim();
+      payload.method = document.getElementById('off-method').value;
+    }
 
     submitBtn.disabled = true;
     try {
@@ -878,7 +999,8 @@
       lastSaveNote = buildSaveNote(workDate);
       renderAll();
     } catch (err) {
-      alert('保存に失敗しました: ' + err.message);
+      const needsSql = isOff && /check constraint|column|schema cache/i.test(err.message || '');
+      alert('保存に失敗しました: ' + err.message + (needsSql ? '\n\n「時間外対応」を使うには、Supabaseで supabase-schema-3.sql を一度実行する必要があります。' : ''));
     } finally {
       submitBtn.disabled = false;
     }
@@ -893,9 +1015,11 @@
     }
     const rows = records.map(rec => {
       const mins = workedMinutes(rec);
-      const timeLabel = rec.start_time && rec.end_time
-        ? `${hhmm(rec.start_time)}〜${hhmm(rec.end_time)}${rec.has_break ? '(休憩1h)' : ''}`
-        : '—';
+      const timeLabel = rec.category === OFF_CAT
+        ? `${escapeHtml(rec.counterparty || '—')}${rec.method ? ' / ' + escapeHtml(rec.method) : ''}`
+        : (rec.start_time && rec.end_time
+          ? `${hhmm(rec.start_time)}〜${hhmm(rec.end_time)}${rec.has_break ? '(休憩1h)' : ''}`
+          : '—');
       const tagsLabel = rec.tags.length ? rec.tags.map(escapeHtml).join(', ') : '';
       const isSwap = rec.category === '代休' || rec.category === '休日出勤';
       return `
@@ -954,7 +1078,7 @@
     const weekRecords = records.filter(r => r.work_date >= weekStartStr && r.work_date <= weekEndStr);
 
     const attendanceDates = new Set(
-      weekRecords.filter(r => r.category !== '代休').map(r => r.work_date)
+      weekRecords.filter(r => r.category !== '代休' && r.category !== OFF_CAT).map(r => r.work_date)
     );
     weekAttendanceEl.textContent = `${attendanceDates.size} / ${BASE_DAYS_PER_WEEK} 日`;
 
@@ -988,7 +1112,7 @@
       } else {
         bodyHtml = dayRecords.map(r => {
           const mins = workedMinutes(r);
-          const timeLabel = r.start_time && r.end_time ? `${hhmm(r.start_time)}〜${hhmm(r.end_time)}` : '';
+          const timeLabel = r.category === OFF_CAT ? escapeHtml(r.counterparty || '') : (r.start_time && r.end_time ? `${hhmm(r.start_time)}〜${hhmm(r.end_time)}` : '');
           return `<div><span class="emph">${escapeHtml(r.category)}</span> ${timeLabel} ${mins > 0 ? `<span class="emph">${minutesToLabel(mins)}</span>` : ''}</div>`;
         }).join('');
       }
@@ -1105,11 +1229,189 @@
     renderMonthView();
   });
 
+
+  // ---------------- 時間外対応 allocation (oldest first) ----------------
+  function mdLabel(dateStr) {
+    const d = parseYMD(dateStr);
+    return `${d.getMonth() + 1}/${d.getDate()}(${WEEKDAY_JP[d.getDay()]})`;
+  }
+
+  function computeAllocations() {
+    const todayStr = formatYMD(today);
+    const pool = records
+      .filter(r => r.category === OFF_CAT && r.minutes > 0)
+      .map(r => ({ rec: r, left: r.minutes, uses: [] }))
+      .sort((a, b) => (a.rec.work_date < b.rec.work_date ? -1 : a.rec.work_date > b.rec.work_date ? 1 : 0));
+
+    const workedByDate = {};
+    const restDays = new Set();
+    records.forEach(r => {
+      if (r.category === OFF_CAT) return;
+      if (r.category === '代休') { restDays.add(r.work_date); return; }
+      workedByDate[r.work_date] = (workedByDate[r.work_date] || 0) + workedMinutes(r);
+    });
+    // shortfall day = a Mon/Wed/Fri on which work was recorded but less than 8h (e.g. left early)
+    const shortDays = Object.keys(workedByDate).sort()
+      .filter(d => d <= todayStr && BASIC_WEEKDAYS.includes(parseYMD(d).getDay())
+        && workedByDate[d] > 0 && workedByDate[d] < BASE_DAY_MINS && !restDays.has(d))
+      .map(d => ({ date: d, worked: workedByDate[d], short: BASE_DAY_MINS - workedByDate[d], left: BASE_DAY_MINS - workedByDate[d], sources: [] }));
+
+    const take = (day, entry, later) => {
+      const m = Math.min(day.left, entry.left);
+      if (m <= 0) return;
+      day.left -= m; entry.left -= m;
+      day.sources.push({ rec: entry.rec, mins: m, later });
+      entry.uses.push({ date: day.date, mins: m, later });
+    };
+    // pass 1: off-hours work done on or before the shortfall day, oldest first
+    shortDays.forEach(day => pool.forEach(e => { if (e.rec.work_date <= day.date) take(day, e, false); }));
+    // pass 2: shortfall still open -> off-hours work done afterwards (left early first, worked at home later)
+    shortDays.forEach(day => pool.forEach(e => { if (day.left > 0 && e.rec.work_date > day.date) take(day, e, true); }));
+
+    const unused = pool.reduce((sum, e) => sum + e.left, 0);
+    return { pool, shortDays, unused };
+  }
+
+  function offHoursLines(line, start, end) {
+    const sStr = formatYMD(start), eStr = formatYMD(end);
+    const total = records.filter(r => r.category === OFF_CAT && r.work_date >= sStr && r.work_date <= eStr)
+      .reduce((sum, r) => sum + workedMinutes(r), 0);
+    const alloc = computeAllocations();
+    return line('時間外対応(今月)', minutesToLabel(total)) +
+      line('まだ当てていない分', minutesToLabel(alloc.unused));
+  }
+
+  let adjAnchorYear = today.getFullYear();
+  let adjAnchorMonth = today.getMonth();
+
+  function buildAdjustModel() {
+    const y = adjAnchorYear, mo = adjAnchorMonth;
+    const sStr = `${y}-${pad2(mo + 1)}-01`;
+    const eStr = `${y}-${pad2(mo + 1)}-${pad2(new Date(y, mo + 1, 0).getDate())}`;
+    const alloc = computeAllocations();
+    const monthOff = alloc.pool.filter(e => e.rec.work_date >= sStr && e.rec.work_date <= eStr);
+    const monthShort = alloc.shortDays.filter(d => d.date >= sStr && d.date <= eStr);
+    const offTotal = monthOff.reduce((sum, e) => sum + e.rec.minutes, 0);
+    const shortTotal = monthShort.reduce((sum, d) => sum + d.short, 0);
+    const coveredTotal = monthShort.reduce((sum, d) => sum + (d.short - d.left), 0);
+    const byParty = {};
+    monthOff.forEach(e => {
+      const k = e.rec.counterparty || '(相手先なし)';
+      byParty[k] = (byParty[k] || 0) + e.rec.minutes;
+    });
+    const dayTimes = (date) => records.filter(r => r.work_date === date && r.category !== OFF_CAT && r.start_time && r.end_time)
+      .map(r => `${hhmm(r.start_time)}〜${hhmm(r.end_time)}`).join(', ');
+    return { y, mo, alloc, monthOff, monthShort, offTotal, shortTotal, coveredTotal, byParty, dayTimes };
+  }
+
+  function renderAdjustView() {
+    const M = buildAdjustModel();
+    document.getElementById('adj-label').textContent = `${M.y}年${M.mo + 1}月`;
+    const srcLine = (s) => `${mdLabel(s.rec.work_date)} ${escapeHtml(s.rec.counterparty || '')}${s.rec.method ? '(' + escapeHtml(s.rec.method) + ')' : ''} ${s.mins}分${s.later ? ' ※早退のあとに対応' : ''}`;
+    const statLine = (k, v) => `<div class="stat-row"><span class="stat-label">${k}</span><span class="stat-value">${v}</span></div>`;
+
+    let html = '';
+    html += statLine('時間外対応(この月の合計)', minutesToLabel(M.offTotal));
+    html += statLine('早退などの不足(この月)', minutesToLabel(M.shortTotal));
+    html += statLine('うち相殺済み', minutesToLabel(M.coveredTotal));
+    html += statLine('相殺できていない不足', minutesToLabel(M.shortTotal - M.coveredTotal));
+    html += statLine('まだ当てていない時間外対応(全期間)', minutesToLabel(M.alloc.unused));
+
+    html += '<hr class="rule"><h3>早退などで不足した日と、その相殺</h3>';
+    if (M.monthShort.length === 0) {
+      html += '<div class="empty-state">この月に、8時間に満たない基本勤務日はありません。</div>';
+    } else {
+      html += M.monthShort.map(d => `
+        <div class="adj-item">
+          <div><span class="emph">${mdLabel(d.date)}</span> ${M.dayTimes(d.date)} 実働${minutesToLabel(d.worked)} / 不足${minutesToLabel(d.short)}</div>
+          ${d.sources.map(s => `<div class="sub">← ${srcLine(s)}</div>`).join('')}
+          ${d.left > 0 ? `<div class="sub">未相殺 ${minutesToLabel(d.left)}</div>` : ''}
+        </div>`).join('');
+    }
+
+    html += '<hr class="rule"><h3>時間外対応の一覧</h3>';
+    if (M.monthOff.length === 0) {
+      html += '<div class="empty-state">この月の時間外対応の記録はありません。</div>';
+    } else {
+      html += M.monthOff.map(e => {
+        const r = e.rec;
+        const use = e.uses.length
+          ? e.uses.map(u => `${mdLabel(u.date)}の不足に ${u.mins}分`).join(' / ')
+          : '未使用';
+        return `
+        <div class="adj-item">
+          <div><span class="emph">${mdLabel(r.work_date)}</span> ${escapeHtml(r.counterparty || '—')}${r.method ? ' / ' + escapeHtml(r.method) : ''} ${minutesToLabel(r.minutes)}</div>
+          ${r.memo ? `<div class="sub">${escapeHtml(r.memo)}</div>` : ''}
+          <div class="sub">→ ${use}${e.left > 0 && e.uses.length ? `(あと${e.left}分は未使用)` : ''}</div>
+        </div>`;
+      }).join('');
+    }
+
+    html += '<hr class="rule"><h3>相手先ごとの合計</h3>';
+    const parties = Object.entries(M.byParty).sort((a, b) => b[1] - a[1]);
+    html += parties.length === 0 ? '<div class="empty-state">記録がありません。</div>'
+      : parties.map(([k, v]) => statLine(escapeHtml(k), minutesToLabel(v))).join('');
+    document.getElementById('adj-body').innerHTML = html;
+  }
+
+  function buildAdjustText(withMemo) {
+    const M = buildAdjustModel();
+    const L = [];
+    L.push(`${M.y}年${M.mo + 1}月 時間外対応と調整の記録`);
+    L.push(`時間外対応の合計: ${minutesToLabel(M.offTotal)} / 早退などの不足: ${minutesToLabel(M.shortTotal)} / 相殺済み: ${minutesToLabel(M.coveredTotal)}`);
+    L.push('');
+    L.push('■ 時間外対応');
+    if (M.monthOff.length === 0) L.push('(記録なし)');
+    M.monthOff.forEach(e => {
+      const r = e.rec;
+      L.push(`${mdLabel(r.work_date)} ${r.counterparty || '—'}${r.method ? '/' + r.method : ''} ${minutesToLabel(r.minutes)}${withMemo && r.memo ? ' 「' + r.memo + '」' : ''}`);
+    });
+    L.push('');
+    L.push('■ 早退などの相殺');
+    if (M.monthShort.length === 0) L.push('(該当なし)');
+    M.monthShort.forEach(d => {
+      L.push(`${mdLabel(d.date)} 実働${minutesToLabel(d.worked)}(不足${minutesToLabel(d.short)})`);
+      d.sources.forEach(s => L.push(`  ← ${mdLabel(s.rec.work_date)} ${s.rec.counterparty || ''} ${s.mins}分${s.later ? '(早退後に対応)' : ''}`));
+      if (d.left > 0) L.push(`  未相殺 ${minutesToLabel(d.left)}`);
+    });
+    return L.join('\n');
+  }
+
+  document.getElementById('prev-adj').addEventListener('click', () => {
+    adjAnchorMonth -= 1;
+    if (adjAnchorMonth < 0) { adjAnchorMonth = 11; adjAnchorYear -= 1; }
+    renderAdjustView();
+  });
+  document.getElementById('next-adj').addEventListener('click', () => {
+    adjAnchorMonth += 1;
+    if (adjAnchorMonth > 11) { adjAnchorMonth = 0; adjAnchorYear += 1; }
+    renderAdjustView();
+  });
+  document.getElementById('adj-today-btn').addEventListener('click', () => {
+    adjAnchorYear = today.getFullYear();
+    adjAnchorMonth = today.getMonth();
+    renderAdjustView();
+  });
+  document.getElementById('adj-copy').addEventListener('click', async () => {
+    const text = buildAdjustText(document.getElementById('adj-with-memo').checked);
+    const msg = document.getElementById('adj-copy-msg');
+    try {
+      await navigator.clipboard.writeText(text);
+      msg.textContent = 'コピーしました。';
+    } catch (e) {
+      const ta = document.createElement('textarea');
+      ta.value = text; document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); msg.textContent = 'コピーしました。'; } catch (e2) { msg.textContent = 'コピーできませんでした。'; }
+      document.body.removeChild(ta);
+    }
+  });
+
   function renderAll() {
     renderStatusPanel();
     renderEntryList();
     renderWeekView();
     renderMonthView();
+    renderAdjustView();
   }
 
   // ---------------- Passcode gate ----------------
