@@ -377,11 +377,11 @@
         </div>
         <div class="field" id="start-field">
           <label for="start-time">開始時刻</label>
-          <input type="time" id="start-time" value="09:00">
+          <input type="time" id="start-time" value="07:00">
         </div>
         <div class="field" id="end-field">
           <label for="end-time">終了時刻</label>
-          <input type="time" id="end-time" value="18:00">
+          <input type="time" id="end-time" value="15:00">
         </div>
       </div>
 
@@ -410,7 +410,7 @@
       </div>
 
       <div class="break-row" id="break-row">
-        <label class="checkbox-label"><input type="checkbox" id="has-break" checked> 休憩(1h)あり</label>
+        <label class="checkbox-label"><input type="checkbox" id="has-break"> 休憩(1h)あり</label>
       </div>
 
       <div class="field field-full" style="margin-bottom:14px;">
@@ -950,9 +950,9 @@
     entryForm.reset();
     document.getElementById('record-id').value = '';
     document.getElementById('work-date').value = formatYMD(today);
-    document.getElementById('start-time').value = '09:00';
-    document.getElementById('end-time').value = '18:00';
-    document.getElementById('has-break').checked = true;
+    document.getElementById('start-time').value = '07:00';
+    document.getElementById('end-time').value = '15:00';
+    document.getElementById('has-break').checked = false;
     document.getElementById('off-minutes').value = '';
     document.getElementById('off-counterparty').value = '';
     document.getElementById('off-method').value = 'メール';
