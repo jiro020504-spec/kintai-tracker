@@ -377,11 +377,11 @@
         </div>
         <div class="field" id="start-field">
           <label for="start-time">開始時刻</label>
-          <input type="time" id="start-time" value="09:00">
+          <input type="time" id="start-time" value="07:00">
         </div>
         <div class="field" id="end-field">
           <label for="end-time">終了時刻</label>
-          <input type="time" id="end-time" value="18:00">
+          <input type="time" id="end-time" value="15:00">
         </div>
       </div>
 
@@ -410,7 +410,7 @@
       </div>
 
       <div class="break-row" id="break-row">
-        <label class="checkbox-label"><input type="checkbox" id="has-break" checked> 休憩(1h)あり</label>
+        <label class="checkbox-label"><input type="checkbox" id="has-break"> 休憩(1h)あり</label>
       </div>
 
       <div class="field field-full" style="margin-bottom:14px;">
@@ -596,6 +596,7 @@
     d.setDate(d.getDate() + n);
     return d;
   }
+  // Weeks run Monday 0:00 to Sunday 24:00: returns the Monday on or before date.
   function startOfWeek(date) {
     const d = new Date(date);
     const diff = (d.getDay() + 6) % 7;
@@ -628,8 +629,15 @@
     return Math.max(0, mins);
   }
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  // "Today" is the calendar date in Japan, whatever the device's time zone,
+  // returned as a local-midnight Date like the other date helpers use.
+  const JST_DATE_FMT = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit'
+  });
+  function jstToday() {
+    return parseYMD(JST_DATE_FMT.format(new Date()));
+  }
+  let today = jstToday();
 
   // ---------------- Baseline / status helpers ----------------
   const BASE_DAY_MINS = BASE_HOURS_PER_DAY * 60;
@@ -942,9 +950,9 @@
     entryForm.reset();
     document.getElementById('record-id').value = '';
     document.getElementById('work-date').value = formatYMD(today);
-    document.getElementById('start-time').value = '09:00';
-    document.getElementById('end-time').value = '18:00';
-    document.getElementById('has-break').checked = true;
+    document.getElementById('start-time').value = '07:00';
+    document.getElementById('end-time').value = '15:00';
+    document.getElementById('has-break').checked = false;
     document.getElementById('off-minutes').value = '';
     document.getElementById('off-counterparty').value = '';
     document.getElementById('off-method').value = 'メール';
@@ -1469,6 +1477,34 @@
     renderMonthView();
     renderAdjustView();
   }
+
+  // A page left open (e.g. a phone tab from Sunday night) would otherwise keep
+  // the date it was loaded on, so 今週 would still show last week on Monday.
+  // When the date changes, move views that were on the current period along.
+  function refreshToday() {
+    const next = jstToday();
+    if (formatYMD(next) === formatYMD(today)) return;
+    const prev = today;
+    today = next;
+    if (formatYMD(weekAnchor) === formatYMD(startOfWeek(prev))) weekAnchor = startOfWeek(today);
+    if (monthAnchorYear === prev.getFullYear() && monthAnchorMonth === prev.getMonth()) {
+      monthAnchorYear = today.getFullYear();
+      monthAnchorMonth = today.getMonth();
+    }
+    if (adjAnchorYear === prev.getFullYear() && adjAnchorMonth === prev.getMonth()) {
+      adjAnchorYear = today.getFullYear();
+      adjAnchorMonth = today.getMonth();
+    }
+    const workDateInput = document.getElementById('work-date');
+    if (!editingId && workDateInput.value === formatYMD(prev)) workDateInput.value = formatYMD(today);
+    if (sb) renderAll();
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') refreshToday();
+  });
+  window.addEventListener('focus', refreshToday);
+  window.addEventListener('pageshow', refreshToday);
+  setInterval(refreshToday, 60 * 1000);
 
   // ---------------- Passcode gate ----------------
   async function initApp() {
